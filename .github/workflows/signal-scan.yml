@@ -1,0 +1,47 @@
+# Quét tín hiệu Điểm 2 mỗi 5 phút và báo qua Telegram
+name: Quét tín hiệu Điểm 2
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # chạy mỗi 5 phút
+  workflow_dispatch:        # cho phép bấm chạy tay từ tab Actions
+
+permissions:
+  contents: write           # để commit + push state.json
+
+# Tránh 2 lượt chạy chồng lên nhau (lượt sau chờ lượt trước xong)
+concurrency:
+  group: signal-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lấy code
+        uses: actions/checkout@v4
+
+      - name: Cài Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Chạy bot quét tín hiệu
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SYMBOLS: ${{ vars.SYMBOLS }}       # tùy chọn — để trống thì dùng mặc định trong code
+          TIMEFRAMES: ${{ vars.TIMEFRAMES }} # tùy chọn — để trống thì dùng mặc định trong code
+        run: node signal-bot.js
+
+      - name: Lưu state.json nếu có thay đổi
+        run: |
+          git config user.name "signal-bot"
+          git config user.email "signal-bot@users.noreply.github.com"
+          git add state.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Cập nhật state.json [skip ci]"
+            git push
+          else
+            echo "state.json không thay đổi."
+          fi
